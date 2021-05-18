@@ -20,6 +20,8 @@ chardet==4.0.0
     # via requests
 cycler==0.10.0
     # via matplotlib
+efficientnet-pytorch==0.7.1
+    # via -r requirements.in
 flatbuffers==1.12
     # via tensorflow
 gast==0.3.3
@@ -80,6 +82,7 @@ numpy==1.19.3
     #   scipy
     #   tensorboard
     #   tensorflow
+    #   torch
 oauthlib==3.1.0
     # via requests-oauthlib
 opencv-python==4.5.2.52
@@ -147,10 +150,13 @@ tensorflow==2.4.1
     # via -r requirements.in
 termcolor==1.1.0
     # via tensorflow
+torch==1.8.1
+    # via efficientnet-pytorch
 typing-extensions==3.7.4.3
     # via
     #   importlib-metadata
     #   tensorflow
+    #   torch
 urllib3==1.26.4
     # via requests
 werkzeug==2.0.1
