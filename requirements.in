@@ -1,2 +1,10 @@
+imageai
+tensorflow
+keras
 numpy
-torch
+pillow
+scipy
+h5py
+matplotlib
+opencv-python
+keras-resnet

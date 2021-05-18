@@ -1,5 +1,5 @@
-from .detector import ObjectDetector
+from .detector import ObjectClassifier
 
 __all__ = [
-    "ObjectDetector",
+    "ObjectClassifier",
 ]

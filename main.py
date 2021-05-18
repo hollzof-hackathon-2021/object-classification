@@ -1,5 +1,6 @@
 import argparse
 
+from models import ObjectClassifier
 from utils import assert_file_path, assert_folder_path, assert_newfile_path
 
 
@@ -14,7 +15,8 @@ def train_mode(args: argparse.Namespace):
         assert_newfile_path(args.model_path)
     if args.best_param_path:
         assert_newfile_path(args.best_param_path)
-    # TODO: Construct prediction model and train it. Then print cross validation scores.
+    classifier = ObjectClassifier(args.dataset_path, args.model_path, args.best_param_path)
+    classifier.train()
 
 
 def eval_mode(args: argparse.Namespace):
@@ -25,7 +27,11 @@ def eval_mode(args: argparse.Namespace):
     """
     assert_folder_path(args.dataset_path)
     assert_file_path(args.model_path)
-    # TODO: Restore prediction model and perform evaluation. Then print cross validation scores.
+    classifier = ObjectClassifier(
+        dataset_path=args.dataset_path,
+        model_path=args.model_path,
+    )
+    classifier.evaluate()
 
 
 def pred_mode(args: argparse.Namespace):
@@ -36,7 +42,11 @@ def pred_mode(args: argparse.Namespace):
     """
     assert_folder_path(args.dataset_path)
     assert_file_path(args.model_path)
-    # TODO: Restore prediction model and perform prediction. Then print predictions.
+    classifier = ObjectClassifier(
+        dataset_path=args.dataset_path,
+        model_path=args.model_path,
+    )
+    print(classifier.predict())
 
 
 if __name__ == "__main__":
@@ -49,13 +59,6 @@ if __name__ == "__main__":
     )
     train_parser.add_argument("--model-path", help="Path for the trained model")
     train_parser.add_argument("--best-param-path", help="Path for the training parameters")
-    train_parser.add_argument(
-        "--k-fold",
-        "-k",
-        type=int,
-        help="Number of folds to use for Cross Validation",
-        default=10,
-    )
     train_parser.set_defaults(func=train_mode)
 
     eval_parser = subparser.add_parser("eval")
