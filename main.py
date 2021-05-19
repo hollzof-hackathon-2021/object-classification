@@ -44,9 +44,9 @@ def pred_mode(args: argparse.Namespace):
     assert_newfile_path(args.pred_json_path)
     classifier = ObjectClassifier(
         dataset_path=args.dataset_path,
-        detector_detector_model_path=args.detector_model_path,
+        detector_model_path=args.detector_model_path,
         classifier_model_path=args.classifier_model_path,
-        is_training=False,
+        use_cuda_if_avail=args.use_cuda_if_available,
     )
     preds = classifier.predict()
     with open(args.pred_json_path, "wt") as f:
@@ -72,6 +72,11 @@ if __name__ == "__main__":
     pred_parser.add_argument("detector_model_path", help="Path for loading the detector model")
     pred_parser.add_argument("classifier_model_path", help="Path for loading the classifier model")
     pred_parser.add_argument("pred_json_path", help="Path to the .json file to be created for prediction outputs.")
+    pred_parser.add_argument(
+        "--use-cuda-if-available",
+        action="store_true",
+        help="The flag indicating whether to use a CUDA device if available for prediction.",
+    )
     pred_parser.set_defaults(func=pred_mode)
     args = parser.parse_args()
     args.func(args)

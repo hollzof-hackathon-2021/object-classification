@@ -1,6 +1,6 @@
 import os
 import pickle
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import optuna
 import torch as th
@@ -11,6 +11,8 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torchvision.transforms import InterpolationMode
+
+from .dataset import DetectedObjectDataset
 
 
 def tensor_add_noise(x: th.Tensor) -> th.Tensor:
@@ -24,64 +26,64 @@ class ObjectClassifier:
         detector_model_path: str = None,
         classifier_model_path: str = None,
         best_param_path: str = None,
-        is_training: bool = True,
+        use_cuda_if_avail: bool = True,
     ):
         self._dataset_path = dataset_path
         self._detector_model_path = detector_model_path
         self._classifier_model_path = classifier_model_path
         self._best_param_path = best_param_path
-        self._is_training = is_training
         self._detector: Optional[ObjectDetection] = None
         self._classifier: Optional[EfficientNet] = None
         self._dataloader_train: Optional[DataLoader] = None
         self._dataloader_test: Optional[DataLoader] = None
         self._dataloader_validation: Optional[DataLoader] = None
-        self._is_cuda_available = th.cuda.is_available()
-        self._device = th.device("cuda" if self._is_cuda_available else "cpu")
+        self._use_cuda = use_cuda_if_avail and th.cuda.is_available()
+        self._device = th.device("cuda" if self._use_cuda else "cpu")
+        self._classifier_input_dims = (224, 224)
 
-    def _init_data_loaders(self, batch_size: int = 8):
-        common_tfms_list = [
-            transforms.Resize(224, interpolation=InterpolationMode.BICUBIC),
+    def _get_default_transforms(self) -> List[Callable]:
+        return [
+            transforms.Resize(self._classifier_input_dims, interpolation=InterpolationMode.BICUBIC),
             transforms.ToTensor(),
             transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
         ]
+
+    def _init_data_loaders(self, batch_size: int = 8):
+        common_tfms_list = self._get_default_transforms()
         common_tfms = transforms.Compose(common_tfms_list)
-        if self._is_training:
-            train_tfms_list = [
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
-                transforms.RandomAffine(degrees=(-10, 10), translate=(0.1, 0.1)),
-            ]
-            train_tfms_list.extend(common_tfms_list)
-            train_tfms_list.extend([transforms.Lambda(tensor_add_noise)])
-            train_tfms = transforms.Compose(train_tfms_list)
-            dataset_train = ImageFolder(os.path.join(self._dataset_path, "train"), transform=train_tfms)
-            self._dataloader_train = DataLoader(
-                dataset_train,
-                batch_size=batch_size,
-                shuffle=True,
-                num_workers=1,
-                pin_memory=self._is_cuda_available,
-                persistent_workers=True,
-            )
-            dataset_validation = ImageFolder(os.path.join(self._dataset_path, "validation"), transform=common_tfms)
-            self._dataloader_validation = DataLoader(
-                dataset_validation,
-                batch_size=batch_size,
-                shuffle=True,
-                num_workers=1,
-                pin_memory=self._is_cuda_available,
-                persistent_workers=True,
-            )
-            dataset_test = ImageFolder(os.path.join(self._dataset_path, "test"), transform=common_tfms)
-        else:
-            dataset_test = ImageFolder(self._dataset_path, transform=common_tfms)
+        train_tfms_list = [
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+            transforms.RandomAffine(degrees=(-10, 10), translate=(0.1, 0.1)),
+        ]
+        train_tfms_list.extend(common_tfms_list)
+        train_tfms_list.extend([transforms.Lambda(tensor_add_noise)])
+        train_tfms = transforms.Compose(train_tfms_list)
+        dataset_train = ImageFolder(os.path.join(self._dataset_path, "train"), transform=train_tfms)
+        self._dataloader_train = DataLoader(
+            dataset_train,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=1,
+            pin_memory=self._use_cuda,
+            persistent_workers=True,
+        )
+        dataset_validation = ImageFolder(os.path.join(self._dataset_path, "validation"), transform=common_tfms)
+        self._dataloader_validation = DataLoader(
+            dataset_validation,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=1,
+            pin_memory=self._use_cuda,
+            persistent_workers=True,
+        )
+        dataset_test = ImageFolder(os.path.join(self._dataset_path, "test"), transform=common_tfms)
         self._dataloader_test = DataLoader(
             dataset_test,
             batch_size=batch_size,
             shuffle=True,
             num_workers=1,
-            pin_memory=self._is_cuda_available,
+            pin_memory=self._use_cuda,
             persistent_workers=True,
         )
 
@@ -140,7 +142,7 @@ class ObjectClassifier:
                 best_params: Dict[str, Any] = pickle.load(file=f)
         else:
             study = optuna.create_study(direction="minimize")
-            study.optimize(objective, n_trials=50)
+            study.optimize(objective, n_trials=20)
             with open(self._best_param_path, "wb") as f:
                 pickle.dump(study.best_params, file=f)
 
@@ -165,7 +167,7 @@ class ObjectClassifier:
             self._best_param_path = os.path.join(dataset_dir, f"{dataset_file}.best_params")
         best_params = self._get_classifier_best_params()
         self._train_classifier(**best_params)
-        th.save(self._classifier, self._classifier_model_path)
+        th.save(self._classifier.state_dict(), self._classifier_model_path)
 
     def predict(
         self,
@@ -182,12 +184,41 @@ class ObjectClassifier:
             _detector_model_path=detector_model_path,
             _classifier_model_path=classifier_model_path,
         )
-        self._init_data_loaders()
-        # initialize detector
-        self._detector = ObjectDetection()
-        self._detector.setModelTypeAsYOLOv3()
-        self._detector.setModelPath(self._detector_model_path)
-        self._detector.loadModel()
+        detected_object_dataset = DetectedObjectDataset(
+            self._dataset_path,
+            self._detector_model_path,
+            self._device,
+            transform=transforms.Compose(
+                [
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
+                ]
+            ),
+        )
+        detected_object_loader = DataLoader(
+            detected_object_dataset,
+            batch_size=1,
+            num_workers=0,  # TODO: set to 1.
+            pin_memory=self._use_cuda,
+            # TODO: uncomment the line below.
+            # persistent_workers=True,
+        )
         # initialize classifier
         self._init_classifier()
-        # TODO: write the rest.
+        self._classifier.eval()
+
+        classifier_transform = transforms.Resize(self._classifier_input_dims, interpolation=InterpolationMode.BICUBIC)
+        with th.no_grad():
+            pred_per_image = []
+            for image, detections in detected_object_loader:
+                image = image.to(self._device)
+                # image is a Tensor of shape (1, channel_size, height, width)
+                pred_per_object = []
+                for detection in detections:
+                    x1, y1, x2, y2 = [i.item() for i in detection["box_points"]]
+                    output = self._classifier(classifier_transform(image[:, :, y1:y2, x1:x2]))
+                    # output[0, 0] is the probability of the object NOT wearing a mask
+                    pred_per_object.append(((x1, y1, x2, y2), th.softmax(output, dim=-1)[0, 0].item()))
+                pred_per_image.append(pred_per_object)
+
+        return pred_per_image

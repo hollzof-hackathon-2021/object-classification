@@ -11,3 +11,4 @@ keras-resnet
 efficientnet_pytorch
 torchvision
 optuna
+pillow
