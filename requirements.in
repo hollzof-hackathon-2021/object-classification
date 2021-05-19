@@ -9,3 +9,5 @@ matplotlib
 opencv-python
 keras-resnet
 efficientnet_pytorch
+torchvision
+optuna

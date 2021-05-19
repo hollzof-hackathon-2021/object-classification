@@ -13,7 +13,7 @@
             "cwd": "${workspaceFolder}",
             "args": [
                 "train",
-                "./datasets/human-objects",
+                "./datasets/face-masks",
                 "--detector-model-path",
                 "./pretrained-weights/yolo.h5",
                 "--classifier-model-path",

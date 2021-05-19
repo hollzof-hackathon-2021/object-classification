@@ -23,23 +23,6 @@ def train_mode(args: argparse.Namespace):
     classifier.train()
 
 
-def eval_mode(args: argparse.Namespace):
-    """Main execution function for when "eval" subcommand is used.
-
-    Args:
-      args: A Namespace object containing command line arguments.
-    """
-    assert_folder_path(args.dataset_path)
-    assert_file_path(args.detector_model_path)
-    assert_file_path(args.classifier_model_path)
-    classifier = ObjectClassifier(
-        dataset_path=args.dataset_path,
-        detector_detector_model_path=args.detector_model_path,
-        classifier_model_path=args.classifier_model_path,
-    )
-    classifier.evaluate()
-
-
 def pred_mode(args: argparse.Namespace):
     """Main execution function for when "pred" subcommand is used.
 
@@ -53,6 +36,7 @@ def pred_mode(args: argparse.Namespace):
         dataset_path=args.dataset_path,
         detector_detector_model_path=args.detector_model_path,
         classifier_model_path=args.classifier_model_path,
+        is_training=False,
     )
     print(classifier.predict())
 
@@ -63,18 +47,13 @@ if __name__ == "__main__":
     train_parser = subparser.add_parser("train")
     train_parser.add_argument(
         "dataset_path",
-        help="Path to the folder containing image dataset for training",
+        help="Path to the folder containing image dataset for "
+        "training the classifier (no need for training the object detector)",
     )
     train_parser.add_argument("--detector-model-path", help="Path for the trained object detection model")
     train_parser.add_argument("--classifier-model-path", help="Path for the trained classification model")
     train_parser.add_argument("--best-param-path", help="Path for the training parameters")
     train_parser.set_defaults(func=train_mode)
-
-    eval_parser = subparser.add_parser("eval")
-    eval_parser.add_argument("dataset_path", help="Path to the dataset for evaluation")
-    eval_parser.add_argument("detector_model_path", help="Path for loading the detector model")
-    eval_parser.add_argument("classifier_model_path", help="Path for loading the classifier model")
-    eval_parser.set_defaults(func=eval_mode)
 
     pred_parser = subparser.add_parser("pred")
     pred_parser.add_argument("dataset_path", help="Path to the dataset for prediction")
