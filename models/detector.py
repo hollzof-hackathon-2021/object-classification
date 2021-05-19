@@ -26,15 +26,27 @@ class ObjectClassifier:
         best_param_path: str = None,
         is_training: bool = True,
     ):
-        is_cuda_available = th.cuda.is_available()
         self._dataset_path = dataset_path
+        self._detector_model_path = detector_model_path
+        self._classifier_model_path = classifier_model_path
+        self._best_param_path = best_param_path
+        self._is_training = is_training
+        self._detector: Optional[ObjectDetection] = None
+        self._classifier: Optional[EfficientNet] = None
+        self._dataloader_train: Optional[DataLoader] = None
+        self._dataloader_test: Optional[DataLoader] = None
+        self._dataloader_validation: Optional[DataLoader] = None
+        self._is_cuda_available = th.cuda.is_available()
+        self._device = th.device("cuda" if self._is_cuda_available else "cpu")
+
+    def _init_data_loaders(self, batch_size: int = 8):
         common_tfms_list = [
             transforms.Resize(224, interpolation=InterpolationMode.BICUBIC),
             transforms.ToTensor(),
             transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
         ]
         common_tfms = transforms.Compose(common_tfms_list)
-        if is_training:
+        if self._is_training:
             train_tfms_list = [
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
@@ -43,42 +55,35 @@ class ObjectClassifier:
             train_tfms_list.extend(common_tfms_list)
             train_tfms_list.extend([transforms.Lambda(tensor_add_noise)])
             train_tfms = transforms.Compose(train_tfms_list)
-            batch_size = 8
-            dataset_train = ImageFolder(os.path.join(dataset_path, "train"), transform=train_tfms)
+            dataset_train = ImageFolder(os.path.join(self._dataset_path, "train"), transform=train_tfms)
             self._dataloader_train = DataLoader(
                 dataset_train,
                 batch_size=batch_size,
                 shuffle=True,
                 num_workers=1,
-                pin_memory=is_cuda_available,
+                pin_memory=self._is_cuda_available,
                 persistent_workers=True,
             )
-            dataset_validation = ImageFolder(os.path.join(dataset_path, "validation"), transform=common_tfms)
+            dataset_validation = ImageFolder(os.path.join(self._dataset_path, "validation"), transform=common_tfms)
             self._dataloader_validation = DataLoader(
                 dataset_validation,
                 batch_size=batch_size,
                 shuffle=True,
                 num_workers=1,
-                pin_memory=is_cuda_available,
+                pin_memory=self._is_cuda_available,
                 persistent_workers=True,
             )
-            dataset_test = ImageFolder(os.path.join(dataset_path, "test"), transform=common_tfms)
+            dataset_test = ImageFolder(os.path.join(self._dataset_path, "test"), transform=common_tfms)
         else:
-            dataset_test = ImageFolder(dataset_path, transform=common_tfms)
+            dataset_test = ImageFolder(self._dataset_path, transform=common_tfms)
         self._dataloader_test = DataLoader(
             dataset_test,
             batch_size=batch_size,
             shuffle=True,
             num_workers=1,
-            pin_memory=is_cuda_available,
+            pin_memory=self._is_cuda_available,
             persistent_workers=True,
         )
-        self._detector_model_path = detector_model_path
-        self._classifier_model_path = classifier_model_path
-        self._best_param_path = best_param_path
-        self._detector: Optional[ObjectDetection] = None
-        self._classifier: Optional[EfficientNet] = None
-        self._device = th.device("cuda" if is_cuda_available else "cpu")
 
     def _init_classifier(self):
         if self._classifier_model_path is not None:
@@ -144,14 +149,17 @@ class ObjectClassifier:
     def train(
         self,
         dataset_path: str = None,
-        model_path: str = None,
+        detector_model_path: str = None,
+        classifier_model_path: str = None,
         best_param_path: str = None,
     ):
         self._load_args(
             _dataset_path=dataset_path,
-            _model_path=model_path,
+            _detector_model_path=detector_model_path,
+            _classifier_model_path=classifier_model_path,
             _best_param_path=best_param_path,
         )
+        self._init_data_loaders()
         if self._best_param_path is None:
             dataset_dir, dataset_file = os.path.split(self._dataset_path)
             self._best_param_path = os.path.join(dataset_dir, f"{dataset_file}.best_params")
@@ -159,12 +167,22 @@ class ObjectClassifier:
         self._train_classifier(**best_params)
         th.save(self._classifier, self._classifier_model_path)
 
-    def predict(self, dataset_path: str = None, model_path: str = None) -> List[List[Tuple[Tuple[int, int, int, int], float]]]:
+    def predict(
+        self,
+        dataset_path: str = None,
+        detector_model_path: str = None,
+        classifier_model_path: str = None,
+    ) -> List[List[Tuple[Tuple[int, int, int, int], float]]]:
         """Performs prediction for each image in the dataset and for each
         image, it outputs a list of ((a,b,c,d), p) where a,b,c,d are bounds
         of a bounding box in pixels and p is the probability of wearing a mask.
         """
-        self._load_args(_dataset_path=dataset_path, _model_path=model_path)
+        self._load_args(
+            _dataset_path=dataset_path,
+            _detector_model_path=detector_model_path,
+            _classifier_model_path=classifier_model_path,
+        )
+        self._init_data_loaders()
         # initialize detector
         self._detector = ObjectDetection()
         self._detector.setModelTypeAsYOLOv3()
