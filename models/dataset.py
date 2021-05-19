@@ -34,7 +34,8 @@ class DetectedObjectDataset(Dataset):
     def __getitem__(self, index: int) -> T_co:
         if self._detector is None:
             self._init_detector()
-        image_pil = Image.open(os.path.join(self._dataset_path, self._image_paths[index])).convert("RGB")
+        image_path = os.path.join(self._dataset_path, self._image_paths[index])
+        image_pil = Image.open(image_path).convert("RGB")
         image_array = np.array(image_pil)
         _, detections = self._detector.detectCustomObjectsFromImage(
             custom_objects=self._custom_objects,
@@ -43,7 +44,7 @@ class DetectedObjectDataset(Dataset):
             output_type="array",
             minimum_percentage_probability=70,
         )
-        return self._transform(image_pil), detections
+        return self._transform(image_pil), detections, image_path
 
     def __len__(self) -> int:
         return len(self._image_paths)

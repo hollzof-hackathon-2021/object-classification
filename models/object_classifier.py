@@ -174,10 +174,10 @@ class ObjectClassifier:
         dataset_path: str = None,
         detector_model_path: str = None,
         classifier_model_path: str = None,
-    ) -> List[List[Tuple[Tuple[int, int, int, int], float]]]:
+    ) -> Dict[str, List[Tuple[Tuple[int, int, int, int], float]]]:
         """Performs prediction for each image in the dataset and for each
-        image, it outputs a list of ((a,b,c,d), p) where a,b,c,d are bounds
-        of a bounding box in pixels and p is the probability of wearing a mask.
+        image, it outputs a dict of {'image_path': ((a,b,c,d), p)} where a,b,c,d
+        are bounds of a bounding box in pixels and p is the probability of wearing a mask.
         """
         self._load_args(
             _dataset_path=dataset_path,
@@ -209,8 +209,8 @@ class ObjectClassifier:
 
         classifier_transform = transforms.Resize(self._classifier_input_dims, interpolation=InterpolationMode.BICUBIC)
         with th.no_grad():
-            pred_per_image = []
-            for image, detections in detected_object_loader:
+            pred_per_image = {}
+            for image, detections, name in detected_object_loader:
                 image = image.to(self._device)
                 # image is a Tensor of shape (1, channel_size, height, width)
                 pred_per_object = []
@@ -219,6 +219,6 @@ class ObjectClassifier:
                     output = self._classifier(classifier_transform(image[:, :, y1:y2, x1:x2]))
                     # output[0, 0] is the probability of the object NOT wearing a mask
                     pred_per_object.append(((x1, y1, x2, y2), th.softmax(output, dim=-1)[0, 0].item()))
-                pred_per_image.append(pred_per_object)
+                pred_per_image[name[0]] = pred_per_object
 
         return pred_per_image
